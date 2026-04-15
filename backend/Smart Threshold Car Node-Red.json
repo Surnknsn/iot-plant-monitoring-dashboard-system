@@ -1,0 +1,1444 @@
+[
+    {
+        "id": "59b190cff3041764",
+        "type": "tab",
+        "label": "Seed Monitor (Webcam + Base64 + Telegram)",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "fa2b84f11de87f66",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "Upload (JSON base64)",
+        "url": "/api/upload",
+        "method": "post",
+        "upload": false,
+        "x": 220,
+        "y": 120,
+        "wires": [
+            [
+                "af259a753478edcf"
+            ]
+        ]
+    },
+    {
+        "id": "af259a753478edcf",
+        "type": "json",
+        "z": "59b190cff3041764",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 420,
+        "y": 120,
+        "wires": [
+            [
+                "b17bfc03b974ac9a"
+            ]
+        ]
+    },
+    {
+        "id": "b17bfc03b974ac9a",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Validate & Decode (base64)",
+        "func": "// รับได้ทั้ง object และ string (รวมถึง Buffer)\nlet p = msg.payload;\nif (Buffer.isBuffer(p)) p = p.toString();\nif (typeof p === 'string') {\n  try { p = JSON.parse(p); } catch(e){\n    msg.statusCode = 400;\n    msg.payload = { ok:false, error:\"invalid JSON body\" };\n    return [null, msg];\n  }\n}\nif (!p || !p.image_b64) {\n  msg.statusCode = 400;\n  msg.payload = { ok:false, error:\"image_b64 missing\" };\n  return [null, msg];\n}\nconst plant_id = p.plant_id || \"PLANT-01\";\nconst tray_id  = p.tray_id  || \"TRAY-01\";\nconst cell_id  = p.cell_id  || \"A1\";\nconst temp_c   = (p.temp_c!=null)   ? Number(p.temp_c)   : undefined;\nconst humidity = (p.humidity!=null) ? Number(p.humidity) : undefined;\n// decode base64 (รองรับ data URL)\nlet b64 = p.image_b64; const comma = b64.indexOf(','); if (comma>0) b64 = b64.slice(comma+1);\nconst buffer = Buffer.from(b64,'base64');\n// meta + buffer\nmsg.meta = { plant_id, tray_id, cell_id, temp_c, humidity, ts: Date.now() };\nmsg.imageBuffer = buffer;\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 660,
+        "y": 120,
+        "wires": [
+            [
+                "6fbef3a5af51243a"
+            ],
+            [
+                "950ce3d907872e48"
+            ]
+        ]
+    },
+    {
+        "id": "6fbef3a5af51243a",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Set Save Path",
+        "func": "// เซฟลง C:/AppServ/www/minijec/media/YYYY/MM/DD/\nconst baseDir = \"C:/AppServ/www/minijec/media\";\nconst d = new Date();\nconst pad = n => String(n).padStart(2,'0');\nconst yyyy = d.getFullYear();\nconst mm = pad(d.getMonth()+1);\nconst dd = pad(d.getDate());\nconst ts = Math.floor(d.getTime()/1000);\nconst fn = `${msg.meta.plant_id}_${ts}.jpg`;\nmsg.saveDir = `${baseDir}/${yyyy}/${mm}/${dd}`;\nmsg.filepath = `${msg.saveDir}/${fn}`;\nmsg.public_url = `/minijec/media/${yyyy}/${mm}/${dd}/${fn}`;\nmsg.payload = msg.imageBuffer;  // ส่งบัฟเฟอร์ไป node file\nreturn msg;",
+        "outputs": 1,
+        "x": 880,
+        "y": 120,
+        "wires": [
+            [
+                "b3b2a927da9aabac"
+            ]
+        ]
+    },
+    {
+        "id": "b3b2a927da9aabac",
+        "type": "file",
+        "z": "59b190cff3041764",
+        "name": "Save Image",
+        "filename": "filepath",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "true",
+        "encoding": "none",
+        "x": 1100,
+        "y": 120,
+        "wires": [
+            [
+                "e025e6b2bf9399f8"
+            ]
+        ]
+    },
+    {
+        "id": "e025e6b2bf9399f8",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Build analyze.py cmd",
+        "func": "const img = msg.filepath;\nconst script = 'C:/Users/Lenovo/analyze.py';\nmsg.payload = `\"${script}\" \"${img}\" --mode otsu --kopen 3 --kclose 3 --area-min 80`;\nreturn msg;",
+        "outputs": 1,
+        "x": 1320,
+        "y": 120,
+        "wires": [
+            [
+                "093e3c1dc952d340"
+            ]
+        ]
+    },
+    {
+        "id": "093e3c1dc952d340",
+        "type": "exec",
+        "z": "59b190cff3041764",
+        "command": "py",
+        "addpay": "payload",
+        "append": "",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": false,
+        "name": "Analyze (OpenCV)",
+        "x": 1540,
+        "y": 160,
+        "wires": [
+            [
+                "faca317da04d0a5f"
+            ],
+            [
+                "b73665d60692c992",
+                "faca317da04d0a5f"
+            ],
+            [
+                "b73665d60692c992"
+            ]
+        ]
+    },
+    {
+        "id": "debfcb7581d0bf2d",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "debug (raw JSON)",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 2090,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "e6b02432336d053f",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Compose Influx Point",
+        "func": "// Compose Influx Point (robust) — fixed: avoid name 'env'\nconst pathLike = (v) => (typeof v === 'string') ? v : '';\n\nconst r = (msg && typeof msg.payload === 'object') ? msg.payload : {};\nlet meta = (msg && typeof msg.meta === 'object') ? msg.meta : {};\n\n// อย่าใช้ชื่อ 'env' — ใน Function node มี 'env' อยู่แล้ว\nconst envLast = global.get('env_last') || {};\nif (meta.temp_c == null && typeof envLast.temp_c === 'number') meta.temp_c = envLast.temp_c;\nif (meta.humidity == null && typeof envLast.humidity === 'number') meta.humidity = envLast.humidity;\n\n// ถ้าไม่มี plant/tray/cell ใน meta ให้ถอดจากชื่อไฟล์ (หลัง rename)\nlet plant_id = meta.plant_id;\nlet tray_id = meta.tray_id;\nlet cell_id = meta.cell_id;\n\nif (!plant_id || !tray_id || !cell_id) {\n  const fp = pathLike(msg.filepath);\n  const fn = fp.split(/[\\\\/]/).pop();  // basename\n  // ชื่อไฟล์มาตรฐาน: PLANT-01_T-01_C-XX_1758943311.jpg\n  const mm = fn && fn.match(/^(PLANT-\\d+)_T-(\\d{2})_C-([A-Za-z0-9-]+)_(\\d+)\\.(jpg|jpeg|png)$/i);\n  if (mm) {\n    plant_id = plant_id || mm[1];\n    tray_id = tray_id || ('TRAY-' + mm[2]);\n    cell_id = cell_id || mm[3];\n  }\n}\n\n// fallback สุดท้าย\nplant_id = plant_id || 'PLANT-01';\ntray_id = tray_id || 'TRAY-01';\ncell_id = cell_id || 'A1';\n\n// รวม fields ตัวเลขจากผล analyze + ENV\nconst fields = {};\nif (r.area_px != null) fields.area_px = Number(r.area_px);\nif (r.greenness != null) fields.greenness = Number(r.greenness);\nif (r.seed_count != null) fields.seed_count = Number(r.seed_count);\nif (meta.temp_c != null) fields.temp_c = Number(meta.temp_c);\nif (meta.humidity != null) fields.humidity = Number(meta.humidity);\n\n// ถ้าไม่มีฟิลด์ตัวเลขเลย ก็ไม่ต้องเขียน Influx\nif (Object.keys(fields).length === 0) {\n  node.status({ fill: \"yellow\", shape: \"ring\", text: \"no numeric fields\" });\n  return null;\n}\n\n// ส่งเข้า Influx\nmsg.measurement = 'growth';\nmsg.tags = { plant_id, tray_id, cell_id };\nmsg.payload = fields;\n\nnode.status({ fill: \"green\", shape: \"dot\", text: `${tray_id}/${cell_id} → ${Object.keys(fields).join(',')}` });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2140,
+        "y": 100,
+        "wires": [
+            [
+                "2dacf2e47fe717c1",
+                "dc0750498597bff1",
+                "40ff14acb26c7566"
+            ]
+        ]
+    },
+    {
+        "id": "2dacf2e47fe717c1",
+        "type": "influxdb out",
+        "z": "59b190cff3041764",
+        "influxdb": "influx_cfg",
+        "name": "InfluxDB (growth)",
+        "measurement": "",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "",
+        "precisionV18FluxV20": "s",
+        "retentionPolicyV18Flux": "",
+        "org": "my-org",
+        "bucket": "Datafarm",
+        "x": 2360,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "9220c03e9de74add",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Alert > Telegram",
+        "func": "const CHAT_ID = 1520038645; // ← ใส่ chat id ของคุณ\nconst f = msg.payload || {}; const m = msg.meta || {};\nconst alerts = [];\nif (typeof f.greenness==='number' && f.greenness < 0.10) alerts.push(`⚠️ Greenness ต่ำ ${f.greenness.toFixed(2)} — ${m.plant_id||'-'}/${m.tray_id||'-'}-${m.cell_id||'-'}`);\nif (typeof f.temp_c==='number' && f.temp_c > 35) alerts.push(`🔥 Temp สูง ${f.temp_c.toFixed(1)}°C — ${m.plant_id||'-'}`);\nif (alerts.length===0) return null;\nmsg.payload = { chatId: CHAT_ID, type:'message', content: alerts.join('\\n') };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "x": 2140,
+        "y": 160,
+        "wires": [
+            [
+                "2ab1c347f6302e06"
+            ]
+        ]
+    },
+    {
+        "id": "2ab1c347f6302e06",
+        "type": "telegram sender",
+        "z": "59b190cff3041764",
+        "name": "Send Telegram",
+        "bot": "4f6e7d8c9b0a1b2c",
+        "haserroroutput": false,
+        "outputs": 1,
+        "x": 2360,
+        "y": 160,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c610a986587c7e13",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "HTTP OK",
+        "func": "const d = (typeof msg.payload==='object'&&msg.payload)? msg.payload : {};\nmsg.headers = { 'Content-Type':'application/json; charset=utf-8', 'Access-Control-Allow-Origin':'*' };\nmsg.payload = { ok:true, public_url: msg.public_url||null, analyze: { area_px: d.area_px??null, greenness: d.greenness??null, seed_count: d.seed_count??null } };\nreturn msg;",
+        "outputs": 1,
+        "x": 2130,
+        "y": 220,
+        "wires": [
+            [
+                "6edfe456fc47b322"
+            ]
+        ]
+    },
+    {
+        "id": "6edfe456fc47b322",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response",
+        "statusCode": "",
+        "headers": {},
+        "x": 2360,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "950ce3d907872e48",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Error",
+        "statusCode": "400",
+        "headers": {},
+        "x": 880,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "b5302be71943b81a",
+        "type": "serial in",
+        "z": "59b190cff3041764",
+        "name": "ESP32 Serial",
+        "serial": "port-com6",
+        "x": 200,
+        "y": 320,
+        "wires": [
+            [
+                "37baac83c0beb7a1",
+                "702f0cdd46d2ecdc",
+                "be0a4d9c32921adb"
+            ]
+        ]
+    },
+    {
+        "id": "702f0cdd46d2ecdc",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "debug (serial)",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 410,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "37baac83c0beb7a1",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Parse CAPTURE",
+        "func": "// รับข้อความจาก Serial ทีละบรรทัด\nlet line = (msg.payload || \"\").toString().trim();\nif (!line) return null;\n\n// เก็บ env ต่อถาด\nlet env_by_tray = flow.get('env_by_tray') || {};\nlet last_tray = flow.get('last_tray') || 1;\n\n// config พื้นฐาน\nconst PLANT_ID = \"PLANT-01\";\n\n// helper\nconst pad2 = n => String(n).padStart(2, '0');\n\n// ----- กรณี CAPTURE N -----\nlet m1 = line.match(/^CAPTURE\\s+(\\d+)/i);\nif (m1) {\n    const trayNum = parseInt(m1[1], 10);\n    flow.set('last_tray', trayNum);\n\n    // ดึง ENV ล่าสุดของถาดนี้ ถ้าไม่มีใช้ของ global/ล่าสุด\n    const env = env_by_tray[trayNum] || env_by_tray._last || {};\n\n    // แนบ meta ใส่ลง msg เพื่อนำไปใช้ downstream ทั้ง capture/analyze/influx\n    msg.meta = {\n        plant_id: PLANT_ID,\n        tray_id: \"TRAY-\" + pad2(trayNum),\n        cell_id: \"A1\",\n        temp_c: (typeof env.temp_c === 'number') ? env.temp_c : undefined,\n        humidity: (typeof env.humidity === 'number') ? env.humidity : undefined,\n        ts: Date.now()\n    };\n\n    // เตรียมคำสั่ง capture.py (เหมือนเดิมของคุณ)\n    msg.payload = `\"C:/Users/Lenovo/capture.py\" --index 1 --base \"C:/AppServ/www/minijec/media\" --daily`;\n    return msg;\n}\n\n// ----- กรณี ENV temp_c=.. humidity=.. -----\nlet m2 = line.match(/^ENV\\s+temp_c=([0-9]+(?:\\.[0-9]+)?)\\s+humidity=([0-9]+)/i);\nif (m2) {\n    const t = parseFloat(m2[1]);\n    const h = parseInt(m2[2], 10);\n\n    // ผูก ENV กับถาดล่าสุด (จาก CAPTURE ก่อนหน้า)\n    env_by_tray[last_tray] = { temp_c: t, humidity: h, ts: Date.now() };\n    env_by_tray._last = { temp_c: t, humidity: h, ts: Date.now(), tray: last_tray };\n\n    flow.set('env_by_tray', env_by_tray);\n    // ไม่ต้องส่งต่อไปไหน (แค่เก็บค่า)\n    return null;\n}\n\n// อย่างอื่น log ดูเฉยๆ\nnode.warn(\"Unknown serial line: \" + line);\nreturn null;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 320,
+        "wires": [
+            [
+                "e236d924faa24943"
+            ]
+        ]
+    },
+    {
+        "id": "e236d924faa24943",
+        "type": "exec",
+        "z": "59b190cff3041764",
+        "command": "py",
+        "addpay": "payload",
+        "append": "",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": false,
+        "name": "Exec capture.py (webcam)",
+        "x": 680,
+        "y": 320,
+        "wires": [
+            [
+                "ee65230221cf0217"
+            ],
+            [
+                "b73665d60692c992"
+            ],
+            [
+                "b73665d60692c992"
+            ]
+        ]
+    },
+    {
+        "id": "6b2b50965db467de",
+        "type": "json",
+        "z": "59b190cff3041764",
+        "name": "Parse JSON (capture)",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 1180,
+        "y": 320,
+        "wires": [
+            [
+                "0e26c7ad59830c71"
+            ]
+        ]
+    },
+    {
+        "id": "0e26c7ad59830c71",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Set analyze args",
+        "func": "// ใช้ filepath จาก msg (หลัง Rename) เป็นหลัก และซ่อม drive letter ถ้าหาย\nfunction fixWinPath(p) {\n    if (!p) return p;\n    if (Buffer.isBuffer(p)) p = p.toString();\n    p = String(p).replace(/\\\\/g, '/');            // normalize\n    if (/^:[/]/.test(p)) p = 'C' + p;             // แก้เคส \":/AppServ/...\" → \"C:/AppServ/...\"\n    return p;\n}\n\nlet fp = msg.filepath;\n\n// เผื่อบางกรณีโหนดก่อนหน้าใส่ไว้ใน payload (จาก Parse JSON capture)\nif (!fp && msg.payload) {\n    try {\n        const p = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload;\n        if (p && typeof p.filepath === 'string') fp = p.filepath;\n    } catch (_) { }\n}\n\nfp = fixWinPath(fp);\n\nif (!fp) {\n    node.error(\"analyze: filepath missing\");\n    return null;\n}\n\nmsg.filepath = fp;  // เก็บกลับให้โหนดถัดไปใช้\n\nconst script = 'C:/Users/Lenovo/analyze.py';\nmsg.payload = `\"${script}\" \"${fp}\" --mode otsu --kopen 3 --kclose 3 --area-min 80`;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1410,
+        "y": 320,
+        "wires": [
+            [
+                "093e3c1dc952d340"
+            ]
+        ]
+    },
+    {
+        "id": "b73665d60692c992",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "Exec Error",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 1790,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "be0a4d9c32921adb",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Capture ENV (cache)",
+        "func": "// รับ ENV temp_c=30.3 humidity=70 → เก็บ global สำหรับ /api/summary\nif (typeof msg.payload === \"string\") {\n    const m = msg.payload.match(/^ENV\\s+temp_c=([0-9.]+)\\s+humidity=([0-9]+)/i);\n    if (m) {\n        const temp = parseFloat(m[1]);\n        const hum = parseInt(m[2], 10);\n        const env_last = { temp_c: temp, humidity: hum, ts: Date.now() };\n        global.set(\"env_last\", env_last);           // ถ้าต้องการ persistent: global.set(\"env_last\", env_last, \"file\");\n        node.status({ fill: \"green\", shape: \"dot\", text: `T=${temp} H=${hum}` });\n        return null;\n    }\n}\nreturn null;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 440,
+        "y": 500,
+        "wires": [
+            [
+                "857aef55035dcb53"
+            ]
+        ]
+    },
+    {
+        "id": "857aef55035dcb53",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "debug 11",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 700,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "dc0750498597bff1",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "debug 12",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2360,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "ee65230221cf0217",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Rename by Tray",
+        "func": "// Rename by Tray (robust)\nconst fs = global.get('fs');\nconst path = global.get('path');\n\nif (!fs || !path) {\n    node.error(\"global fs/path not found. Please add functionGlobalContext in settings.js and restart Node-RED.\");\n    return msg;\n}\n\n// 1) หา filepath ให้ได้ก่อน\nlet filepath = msg.filepath;\n\n// ถ้ายังไม่มี ลองดูจาก msg.payload (เผื่อยังเป็น JSON string ของ capture.py)\nif ((!filepath || typeof filepath !== 'string') && msg.payload) {\n    try {\n        const p = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload;\n        if (p && typeof p.filepath === 'string') filepath = p.filepath;\n    } catch (e) { /* ignore */ }\n}\n\nif (!filepath || typeof filepath !== 'string') {\n    node.warn(\"Rename: filepath missing. Skip rename.\");\n    return msg; // ไม่ทำอะไรต่อ ปล่อยผ่าน\n}\n\n// 2) เตรียม meta สำหรับตั้งชื่อ\nconst meta = msg.meta || {};\nconst plant = meta.plant_id || 'PLANT-01';\n\n// ปกติเราจะเก็บ tray เป็น 'TRAY-01' หรือเป็นเลข ให้ normalize เป็น 2 หลัก\nlet trayNum =\n    meta.tray_id ?? meta.tray ??\n    (typeof msg.tray === 'number' ? msg.tray : null); // เผื่อโหนดก่อนหน้าตั้งมา\n\nlet tray2 = '01';\nif (trayNum != null) {\n    const n = String(trayNum).replace(/[^\\d]/g, '');\n    if (n) tray2 = String(parseInt(n, 10)).padStart(2, '0');\n}\n\nconst cell = meta.cell_id || 'C-XX';\n\n// 3) คำนวณชื่อใหม่ + rename\nconst dir = path.dirname(filepath);\nconst ts = Math.floor(Date.now() / 1000);\nconst base = `${plant}_T-${tray2}_C-${cell}_${ts}.jpg`;\nconst newPath = path.join(dir, base);\n\ntry {\n    fs.renameSync(filepath, newPath);\n    msg.filepath = newPath;\n\n    if (typeof msg.public_url === 'string') {\n        // แทนชื่อไฟล์ท้าย URL\n        msg.public_url = msg.public_url.replace(/[^\\/\\\\]+$/, base);\n    }\n    node.status({ fill: \"green\", shape: \"dot\", text: base });\n} catch (e) {\n    node.warn(\"Rename failed: \" + e.message);\n}\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 960,
+        "y": 380,
+        "wires": [
+            [
+                "6b2b50965db467de",
+                "f6c593ec1dabdab3"
+            ]
+        ]
+    },
+    {
+        "id": "d80832751da9a1ae",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/list-images",
+        "url": "/api/list-images",
+        "method": "get",
+        "upload": false,
+        "x": 1760,
+        "y": 770,
+        "wires": [
+            [
+                "5b308b4f541878cc"
+            ]
+        ]
+    },
+    {
+        "id": "8d9adcda5610b5d2",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/recent",
+        "url": "/api/recent",
+        "method": "get",
+        "upload": false,
+        "x": 1730,
+        "y": 830,
+        "wires": [
+            [
+                "9cf0956c4ca17e29"
+            ]
+        ]
+    },
+    {
+        "id": "9cf0956c4ca17e29",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Set limit & forward",
+        "func": "// ตั้งค่า limit ดีฟอลต์ 50 แล้วส่งต่อไปใช้โหนดหลัก\nmsg.req = msg.req || { query: {} };\nmsg.req.query = msg.req.query || {};\nif (!msg.req.query.limit) msg.req.query.limit = \"50\";\nreturn msg;",
+        "outputs": 1,
+        "x": 1950,
+        "y": 830,
+        "wires": [
+            [
+                "5b308b4f541878cc"
+            ]
+        ]
+    },
+    {
+        "id": "5b308b4f541878cc",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "List Media (FS → JSON)",
+        "func": "// List Media (FS → JSON) — fixed & hardened\nconst fs   = global.get('fs');\nconst path = global.get('path');\n\nfunction normTray(q) {\n  if (q == null) return null;\n  const n = String(q).replace(/[^\\d]/g, '');\n  if (!n) return null;\n  return 'TRAY-' + String(parseInt(n, 10)).padStart(2, '0');\n}\n\n// รับ date ได้ทั้ง \"YYYY/MM/DD\" หรือ \"YYYY-MM-DD\"\nfunction normalizeDatePath(s) {\n  if (!s) return null;\n  s = String(s).trim();\n  // กรองเฉพาะตัวเลข เครื่องหมาย / และ -\n  s = s.replace(/[^\\d/-]/g, '');\n  // แทนที่ - เป็น /\n  s = s.replace(/-/g, '/');\n  // ตัดให้เหลือ YYYY/MM/DD\n  const m = s.match(/^(\\d{4})\\/(\\d{2})\\/(\\d{2})/);\n  if (!m) return null;\n  return `${m[1]}/${m[2]}/${m[3]}`;\n}\n\nconst baseDir = \"C:/AppServ/www/minijec/media\";\nconst q = (msg.req && msg.req.query) ? msg.req.query : {};\nconst limit = Math.max(0, parseInt(q.limit || \"0\", 10));\nconst trayWant = normTray(q.tray);\n\n// กำหนดโฟลเดอร์ย่อย (yyyy/mm/dd)\nlet sub = normalizeDatePath(q.date);\nif (!sub) {\n  const d = new Date();\n  const yyyy = d.getFullYear();\n  const mm = String(d.getMonth() + 1).padStart(2, '0');\n  const dd = String(d.getDate()).padStart(2, '0');\n  sub = `${yyyy}/${mm}/${dd}`;\n}\nconst dir = path.join(baseDir, ...sub.split('/'));\n\nlet out = [];\nif (fs && path && fs.existsSync(dir)) {\n  const names = fs.readdirSync(dir).filter(n => /\\.(jpg|jpeg|png)$/i.test(n));\n  for (const name of names) {\n    const fp = path.join(dir, name);\n    let st;\n    try {\n      st = fs.statSync(fp);\n    } catch (e) {\n      continue; // ไฟล์เพิ่งถูกย้าย/ลบ ข้ามไป\n    }\n\n    // รองรับชื่อไฟล์มาตรฐาน: PLANT-01_T-03_C-A1_1758559602.jpg\n    const m = name.match(/^(PLANT-\\d+)_T-(\\d{2})_C-([A-Za-z0-9-]+)_(\\d+)\\.(jpg|jpeg|png)$/i);\n\n    const item = {\n      id: name,\n      filename: name,\n      size: st.size,\n      mtime: st.mtimeMs, // ms\n      url: `/minijec/media/${sub}/${name}`\n    };\n\n    if (m) {\n      item.plant_id = m[1];\n      item.tray_id  = 'TRAY-' + m[2];\n      item.cell_id  = m[3];\n      item.ts       = Number(m[4]); // seconds since epoch (จากชื่อไฟล์)\n    }\n\n    if (trayWant && item.tray_id !== trayWant) continue;\n    out.push(item);\n  }\n\n  // ✅ แก้บั๊ก: เทียบเวลาให้เป็นหน่วยเดียวกัน (ms) ก่อน sort\n  const toMs = (it) => (it.ts != null ? it.ts * 1000 : (it.mtime || 0));\n  out.sort((a, b) => toMs(b) - toMs(a));\n\n  if (limit > 0) out = out.slice(0, limit);\n}\n\nmsg.headers = {\n  \"Content-Type\": \"application/json; charset=utf-8\",\n  \"Access-Control-Allow-Origin\": \"*\",\n  \"Cache-Control\": \"no-store, no-cache, must-revalidate, max-age=0\"\n};\nmsg.payload = out;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2010,
+        "y": 770,
+        "wires": [
+            [
+                "e35ce7affdd3d7a7"
+            ]
+        ]
+    },
+    {
+        "id": "e35ce7affdd3d7a7",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response",
+        "statusCode": "",
+        "headers": {},
+        "x": 2220,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "c68f0fabc76852fa",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/list-images",
+        "url": "/api/list-images",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 210,
+        "y": 700,
+        "wires": [
+            [
+                "c909b500a7ed042a"
+            ]
+        ]
+    },
+    {
+        "id": "c909b500a7ed042a",
+        "type": "exec",
+        "z": "59b190cff3041764",
+        "command": "powershell.exe",
+        "addpay": "",
+        "append": "-NoProfile -ExecutionPolicy Bypass -Command \"$base='C:\\AppServ\\www\\minijec\\media'; $root='C:\\AppServ\\www'; $items = Get-ChildItem -Path $base -Recurse -Include *.jpg,*.jpeg,*.png -File | Sort-Object LastWriteTime -Descending; $out = foreach($i in $items){ $full=$i.FullName; $rel=$full.Substring($base.Length).TrimStart('\\'); $url='/minijec/media/' + $rel.Replace('\\\\','/'); [PSCustomObject]@{ path=$full; url=$url; filename=$i.Name; size=$i.Length; modified=$i.LastWriteTimeUtc.ToString('o') } }; $out | ConvertTo-Json -Compress\"",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": true,
+        "name": "List Media (PS → JSON)",
+        "x": 490,
+        "y": 700,
+        "wires": [
+            [
+                "4f46b5f5bdae32c5"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ]
+        ]
+    },
+    {
+        "id": "4f46b5f5bdae32c5",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Ensure JSON string",
+        "func": "if (Buffer.isBuffer(msg.payload)) msg.payload = msg.payload.toString();\nmsg.payload = (msg.payload||'').trim();\nif (!msg.payload) msg.payload = '[]';\nmsg.headers = Object.assign({}, msg.headers, { 'Content-Type': 'application/json; charset=utf-8' });\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 750,
+        "y": 700,
+        "wires": [
+            [
+                "5e84815f89aef5cc"
+            ]
+        ]
+    },
+    {
+        "id": "4509bf4577228116",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response (list)",
+        "statusCode": "",
+        "headers": {},
+        "x": 1220,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "ae377db78935a8ec",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/recent",
+        "url": "/api/recent",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 200,
+        "y": 780,
+        "wires": [
+            [
+                "6726c60c60f066aa"
+            ]
+        ]
+    },
+    {
+        "id": "6726c60c60f066aa",
+        "type": "exec",
+        "z": "59b190cff3041764",
+        "command": "powershell.exe",
+        "addpay": "",
+        "append": "-NoProfile -ExecutionPolicy Bypass -Command \"$base='C:\\AppServ\\www\\minijec\\media'; $root='C:\\AppServ\\www'; $items = Get-ChildItem -Path $base -Recurse -Include *.jpg,*.jpeg,*.png -File | Sort-Object LastWriteTime -Descending; $out = foreach($i in $items){ $full=$i.FullName; $rel=$full.Substring($base.Length).TrimStart('\\'); $url='/minijec/media/' + $rel.Replace('\\\\','/'); [PSCustomObject]@{ path=$full; url=$url; filename=$i.Name; size=$i.Length; modified=$i.LastWriteTimeUtc.ToString('o') } }; $out | ConvertTo-Json -Compress\"",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": true,
+        "name": "List Media (PS → JSON)",
+        "x": 490,
+        "y": 780,
+        "wires": [
+            [
+                "d33e9c753412be95"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ]
+        ]
+    },
+    {
+        "id": "d33e9c753412be95",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Top N + map fields",
+        "func": "let txt = msg.payload; if (Buffer.isBuffer(txt)) txt = txt.toString(); txt = (txt||'').trim() || '[]';\nlet arr; try { arr = JSON.parse(txt); } catch(e){ arr = []; }\nconst q = (msg.req && msg.req._parsedUrl && msg.req._parsedUrl.query) || '';\nconst params = new URLSearchParams(q);\nconst N = Math.max(1, Math.min(200, Number(params.get('limit')||20)));\nconst items = (Array.isArray(arr)?arr:[]).slice(0,N).map(it=>{\n  const id = (it.filename||'').replace(/\\.(jpg|jpeg|png)$/i,'');\n  const m = (it.filename||'').match(/^(PLANT-[0-9]+)/i);\n  const plant_id = m ? m[1] : 'PLANT-01';\n  return {\n    id,\n    plant_id,\n    tray_id: '-',\n    cell_id: '-',\n    seed_count: null,\n    area_px: null,\n    greenness: null,\n    captured_at: it.modified,\n    url: (it.url||'').replace('\\\\','/')\n  };\n});\nmsg.payload = JSON.stringify({ items });\nmsg.headers = Object.assign({}, msg.headers, { 'Content-Type': 'application/json; charset=utf-8' });\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 760,
+        "y": 780,
+        "wires": [
+            [
+                "3bb198ba1049e10a"
+            ]
+        ]
+    },
+    {
+        "id": "e2dc9c19d2d2b1fb",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response (recent)",
+        "statusCode": "",
+        "headers": {},
+        "x": 1230,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "40ce16fe3f82efaa",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/summary",
+        "url": "/api/summary",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 200,
+        "y": 860,
+        "wires": [
+            [
+                "42befd5b82639dd9"
+            ]
+        ]
+    },
+    {
+        "id": "42befd5b82639dd9",
+        "type": "exec",
+        "z": "59b190cff3041764",
+        "command": "powershell.exe",
+        "addpay": "",
+        "append": "-NoProfile -ExecutionPolicy Bypass -Command \"$base='C:\\AppServ\\www\\minijec\\media'; $root='C:\\AppServ\\www'; $items = Get-ChildItem -Path $base -Recurse -Include *.jpg,*.jpeg,*.png -File | Sort-Object LastWriteTime -Descending; $out = foreach($i in $items){ $full=$i.FullName; $rel=$full.Substring($base.Length).TrimStart('\\'); $url='/minijec/media/' + $rel.Replace('\\\\','/'); [PSCustomObject]@{ path=$full; url=$url; filename=$i.Name; size=$i.Length; modified=$i.LastWriteTimeUtc.ToString('o') } }; $out | ConvertTo-Json -Compress\"",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": true,
+        "name": "List Media (PS → JSON)",
+        "x": 490,
+        "y": 860,
+        "wires": [
+            [
+                "57f0f2f14c27d66a"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ]
+        ]
+    },
+    {
+        "id": "57f0f2f14c27d66a",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Compute summary",
+        "func": "const fs = global.get(\"fs\");\nconst path = global.get(\"path\");\nconst BASE = \"C:/AppServ/www/minijec/media\";\n\nfunction countToday() {\n  try {\n    if (!fs || !path) return 0;\n    const d = new Date();\n    const yyyy = d.getFullYear();\n    const mm = String(d.getMonth() + 1).padStart(2, \"0\");\n    const dd = String(d.getDate()).padStart(2, \"0\");\n    const dir = path.join(BASE, yyyy.toString(), mm, dd);\n    if (!fs.existsSync(dir)) return 0;\n    const names = fs.readdirSync(dir);\n    const exts = new Set([\".jpg\", \".jpeg\", \".png\"]);\n    let n = 0;\n    for (const name of names) {\n      const ext = path.extname(name).toLowerCase();\n      if (exts.has(ext)) n++;\n    }\n    return n;\n  } catch (e) {\n    node.warn(\"countToday error: \" + e.message);\n    return 0;\n  }\n}\n\nconst last = global.get(\"env_last\") || {};\nmsg.summary = {\n  images_today: countToday(),\n  seeds_total: null,   // จะเติมทีหลังจาก Influx\n  avg_per_cell: null,   // จะเติมทีหลังจาก Influx\n  temp_c: (typeof last.temp_c === \"number\") ? last.temp_c : null,\n  humidity: (typeof last.humidity === \"number\") ? last.humidity : null\n};\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 230,
+        "y": 1080,
+        "wires": [
+            [
+                "24cd9f78093a5cbc"
+            ]
+        ]
+    },
+    {
+        "id": "3e94aada2facd4b8",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response (summary)",
+        "statusCode": "",
+        "headers": {},
+        "x": 1440,
+        "y": 1080,
+        "wires": []
+    },
+    {
+        "id": "de784228dbec2c57",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/image",
+        "url": "/api/image",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 190,
+        "y": 940,
+        "wires": [
+            [
+                "aec950ed2994c073"
+            ]
+        ]
+    },
+    {
+        "id": "aec950ed2994c073",
+        "type": "exec",
+        "z": "59b190cff3041764",
+        "command": "powershell.exe",
+        "addpay": "",
+        "append": "-NoProfile -ExecutionPolicy Bypass -Command \"$base='C:\\AppServ\\www\\minijec\\media'; $root='C:\\AppServ\\www'; $items = Get-ChildItem -Path $base -Recurse -Include *.jpg,*.jpeg,*.png -File | Sort-Object LastWriteTime -Descending; $out = foreach($i in $items){ $full=$i.FullName; $rel=$full.Substring($base.Length).TrimStart('\\'); $url='/minijec/media/' + $rel.Replace('\\\\','/'); [PSCustomObject]@{ path=$full; url=$url; filename=$i.Name; size=$i.Length; modified=$i.LastWriteTimeUtc.ToString('o') } }; $out | ConvertTo-Json -Compress\"",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": true,
+        "name": "List Media (PS → JSON)",
+        "x": 480,
+        "y": 940,
+        "wires": [
+            [
+                "d4f514ab9b3b8e90"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ],
+            [
+                "6b6c6637f139e50a"
+            ]
+        ]
+    },
+    {
+        "id": "d4f514ab9b3b8e90",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Find by id → detail",
+        "func": "// robust: id รับได้ทั้ง \"base name\" และ \"ชื่อไฟล์พร้อม .jpg/.png\"\n\nlet txt = msg.payload;\nif (Buffer.isBuffer(txt)) txt = txt.toString();\ntxt = (txt || '').trim() || '[]';\n\nlet arr; try { arr = JSON.parse(txt); } catch (e) { arr = []; }\n\n// อ่าน id จาก query\nconst q = (msg.req && msg.req.query) ? msg.req.query : {};\nconst id = String(q.id || \"\").trim();\nif (!id) {\n  msg.statusCode = 400;\n  msg.headers = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' };\n  msg.payload = { ok: false, error: 'id required' };\n  return msg;\n}\n\n// เตรียมทั้งแบบมีนามสกุลและแบบตัดนามสกุล\nconst idLower = id.toLowerCase();\nconst idBaseLower = idLower.replace(/\\.(jpg|jpeg|png)$/i, '');\n\nlet found = null;\nfor (const it of (arr || [])) {\n  const fname = String(it.filename || '');\n  const lower = fname.toLowerCase();\n  const base = lower.replace(/\\.(jpg|jpeg|png)$/i, '');\n  if (lower === idLower || base === idBaseLower) { found = it; break; }\n}\n\nif (!found) {\n  msg.statusCode = 404;\n  msg.headers = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' };\n  msg.payload = { ok: false, error: 'not found' };\n  return msg;\n}\n\n// ส่งฟิลด์ที่หน้า image.html ต้องการ\nconst out = {\n  ok: true,\n  id: (found.filename || '').replace(/\\.(jpg|jpeg|png)$/i, ''),\n  filename: found.filename || '',\n  mtime: found.modified || found.mtime || null,   // ส่วนใหญ่เป็น ISO string\n  size: Number(found.size) || 0,\n  url: String(found.url || '').replace(/\\\\/g, '/')\n};\n\nmsg.headers = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' };\nmsg.payload = out;   // ปล่อยเป็น object ได้เลย\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 760,
+        "y": 940,
+        "wires": [
+            [
+                "bdfc9c41cadbf0cc"
+            ]
+        ]
+    },
+    {
+        "id": "a63efe788aa9826d",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response (image)",
+        "statusCode": "",
+        "headers": {},
+        "x": 1230,
+        "y": 940,
+        "wires": []
+    },
+    {
+        "id": "6b6c6637f139e50a",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "Exec Error",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 770,
+        "y": 640,
+        "wires": []
+    },
+    {
+        "id": "5e84815f89aef5cc",
+        "type": "change",
+        "z": "59b190cff3041764",
+        "name": "Set CORS Header",
+        "rules": [
+            {
+                "t": "set",
+                "p": "headers",
+                "pt": "msg",
+                "to": "{\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET, POST, OPTIONS\",\"Access-Control-Allow-Headers\":\"Content-Type\",\"Cache-Control\":\"no-store, no-cache, must-revalidate, max-age=0\"}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 990,
+        "y": 700,
+        "wires": [
+            [
+                "4509bf4577228116"
+            ]
+        ]
+    },
+    {
+        "id": "3bb198ba1049e10a",
+        "type": "change",
+        "z": "59b190cff3041764",
+        "name": "Set CORS Header",
+        "rules": [
+            {
+                "t": "set",
+                "p": "headers",
+                "pt": "msg",
+                "to": "{\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET, POST, OPTIONS\",\"Access-Control-Allow-Headers\":\"Content-Type\",\"Cache-Control\":\"no-store, no-cache, must-revalidate, max-age=0\"}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 990,
+        "y": 780,
+        "wires": [
+            [
+                "e2dc9c19d2d2b1fb"
+            ]
+        ]
+    },
+    {
+        "id": "645a8477b0d4ce5e",
+        "type": "change",
+        "z": "59b190cff3041764",
+        "name": "Set CORS Header",
+        "rules": [
+            {
+                "t": "set",
+                "p": "headers",
+                "pt": "msg",
+                "to": "{\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET, POST, OPTIONS\",\"Access-Control-Allow-Headers\":\"Content-Type\",\"Cache-Control\":\"no-store, no-cache, must-revalidate, max-age=0\"}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 1080,
+        "wires": [
+            [
+                "3e94aada2facd4b8"
+            ]
+        ]
+    },
+    {
+        "id": "bdfc9c41cadbf0cc",
+        "type": "change",
+        "z": "59b190cff3041764",
+        "name": "Set CORS Header",
+        "rules": [
+            {
+                "t": "set",
+                "p": "headers",
+                "pt": "msg",
+                "to": "{\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET, POST, OPTIONS\",\"Access-Control-Allow-Headers\":\"Content-Type\",\"Cache-Control\":\"no-store, no-cache, must-revalidate, max-age=0\"}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 990,
+        "y": 940,
+        "wires": [
+            [
+                "a63efe788aa9826d"
+            ]
+        ]
+    },
+    {
+        "id": "24cd9f78093a5cbc",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Build Flux (avg/cell)",
+        "func": "msg.query = `\nimport \"date\"\nstart = date.truncate(t: now(), unit: 1d)\nfrom(bucket: \"Datafarm\")\n  |> range(start: start)\n  |> filter(fn: (r) => r._measurement == \"growth\" and r._field == \"seed_count\")\n  |> group(columns: [\"plant_id\",\"tray_id\",\"cell_id\"])\n  |> last()\n  |> group(columns: [])\n  |> keep(columns: [\"_value\"])\n`;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 1080,
+        "wires": [
+            [
+                "b08645bea66ef0b4"
+            ]
+        ]
+    },
+    {
+        "id": "b08645bea66ef0b4",
+        "type": "influxdb in",
+        "z": "59b190cff3041764",
+        "influxdb": "influx_cfg",
+        "name": "InfluxDB (Flux)",
+        "query": "",
+        "rawOutput": false,
+        "org": "my-org",
+        "x": 680,
+        "y": 1080,
+        "wires": [
+            [
+                "9aa895b63803b713"
+            ]
+        ]
+    },
+    {
+        "id": "9aa895b63803b713",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Merge & HTTP payload",
+        "func": "const rows = Array.isArray(msg.payload) ? msg.payload : [];\nlet sum = 0, cnt = 0;\nfor (const r of rows) {\n  const v = Number(r._value);\n  if (Number.isFinite(v)) { sum += v; cnt++; }\n}\nconst s = (msg.summary && typeof msg.summary === 'object') ? msg.summary : {};\ns.seeds_total = cnt ? sum : 0;\ns.avg_per_cell = cnt ? (sum / cnt) : null;\n\nmsg.headers = {\n  \"Content-Type\": \"application/json; charset=utf-8\",\n  \"Access-Control-Allow-Origin\": \"*\"\n};\nmsg.payload = s;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 930,
+        "y": 1080,
+        "wires": [
+            [
+                "645a8477b0d4ce5e"
+            ]
+        ]
+    },
+    {
+        "id": "faca317da04d0a5f",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Ensure Analyze",
+        "func": "// Ensure Analyze — รับข้อความจาก stdout หรือ stderr ก็ได้\nlet s = msg.payload;\nif (Buffer.isBuffer(s)) s = s.toString();\ns = (s || '').trim();\n\n// ข้ามบรรทัดที่ไม่ใช่ JSON (เช่น warning)\nlet obj = null;\nif (s) {\n    try { obj = JSON.parse(s); } catch (e) { obj = null; }\n}\nif (!obj || typeof obj !== 'object') {\n    // ไม่ใช่ JSON → ทิ้งข้อความนี้ไป (จะมีข้อความใหม่ไหลมาอีกจากอีก output)\n    return null;\n}\n\n// บังคับเป็นตัวเลข\n['area_px', 'greenness', 'seed_count'].forEach(k => {\n    if (obj[k] != null) obj[k] = Number(obj[k]);\n});\n\nmsg.payload = obj;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1860,
+        "y": 160,
+        "wires": [
+            [
+                "e6b02432336d053f",
+                "9220c03e9de74add",
+                "c610a986587c7e13",
+                "debfcb7581d0bf2d"
+            ]
+        ]
+    },
+    {
+        "id": "f6c593ec1dabdab3",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "debug 13",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1300,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "ff2dd75d9042336e",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "POST /api/report/latest8",
+        "url": "/api/report/latest8",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 160,
+        "y": 1300,
+        "wires": [
+            [
+                "7a09bf20bd95a983"
+            ]
+        ]
+    },
+    {
+        "id": "7a09bf20bd95a983",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Build Latest8 Report (HTML)",
+        "func": "/**\n * Output #1 -> SMTP (e-mail)\n * Output #2 -> HTTP Response (JSON)\n */\nconst fs = global.get('fs');\nconst path = global.get('path');\n\n// === CONFIG ===\nconst MEDIA_BASE = \"C:/AppServ/www/minijec/media\";\nconst PUBLIC_BASE = \"http://172.20.10.4\";\nconst PUBLIC_PREFIX = \"/minijec\";\n\n// === Helper: HTTP response ===\nfunction httpOK(msgIn, data) {\n  return {\n    req: msgIn.req, res: msgIn.res,\n    headers: {\n      \"Content-Type\": \"application/json; charset=utf-8\",\n      \"Access-Control-Allow-Origin\": \"*\",\n      \"Access-Control-Allow-Methods\": \"POST, OPTIONS\",\n      \"Access-Control-Allow-Headers\": \"Content-Type\"\n    },\n    payload: data\n  };\n}\nfunction httpErr(msgIn, status, message) {\n  return {\n    req: msgIn.req, res: msgIn.res,\n    statusCode: status,\n    headers: {\n      \"Content-Type\": \"application/json; charset=utf-8\",\n      \"Access-Control-Allow-Origin\": \"*\",\n      \"Access-Control-Allow-Methods\": \"POST, OPTIONS\",\n      \"Access-Control-Allow-Headers\": \"Content-Type\"\n    },\n    payload: { ok: false, error: message }\n  };\n}\n\n// === Helper: อ่านอีเมลจาก body/query ===\nfunction readEmail(msg) {\n  let body = msg.payload;\n  if (Buffer.isBuffer(body)) body = body.toString();\n  if (typeof body === \"string\") { try { body = JSON.parse(body); } catch (e) { } }\n  const fromBody = (body && typeof body === \"object\") ? (body.email || body.to) : null;\n  const fromQuery = (msg.req && msg.req.query) ? (msg.req.query.email || msg.req.query.to) : null;\n  return String(fromBody || fromQuery || \"\").trim();\n}\n\nif (!fs || !path) {\n  node.warn(\"global fs/path not found\");\n  return [null, httpErr(msg, 500, \"server fs/path not available\")];\n}\n\nconst email = readEmail(msg);\nif (!email) return [null, httpErr(msg, 400, \"missing email\")];\n\n// === โฟลเดอร์วันที่ ===\nconst now = new Date();\nconst y = now.getFullYear();\nconst m = String(now.getMonth() + 1).padStart(2, \"0\");\nconst d = String(now.getDate()).padStart(2, \"0\");\nconst dayDir = path.join(MEDIA_BASE, y.toString(), m, d);\n\n// === หาไฟล์ล่าสุดต่อถาด ===\nfunction latestPerTray() {\n  if (!fs.existsSync(dayDir)) return [];\n  const names = fs.readdirSync(dayDir).filter(n => /\\.(jpg|jpeg|png)$/i.test(n));\n  const map = {};\n  for (const name of names) {\n    const mm = name.match(/^(PLANT-\\d+)_T-(\\d{2})_C-([A-Za-z0-9-]+)_(\\d+)\\.(jpg|jpeg|png)$/i);\n    if (!mm) continue;\n    const tray = \"TRAY-\" + mm[2];\n    const ts = Number(mm[4]) || 0;\n    if (!map[tray] || ts > map[tray].ts) {\n      map[tray] = { name, ts };\n    }\n  }\n  return Object.entries(map)\n    .map(([tray, o]) => ({\n      tray,\n      filename: o.name,\n      ts: o.ts,\n      url: PUBLIC_BASE + PUBLIC_PREFIX + \"/media/\" + y + \"/\" + m + \"/\" + d + \"/\" + o.name,\n      time: new Date(o.ts * 1000).toLocaleString()\n    }))\n    .sort((a, b) => b.ts - a.ts)\n    .slice(0, 8);\n}\n\nconst items = latestPerTray();\n\n// === Mock metrics (TODO: ดึงจริงจาก InfluxDB ถ้าพร้อม) ===\nfor (const it of items) {\n  it.area_px = Math.floor(Math.random() * 20000);\n  it.greeness = (Math.random() * 1).toFixed(2);\n  it.humidity = (60 + Math.random() * 20).toFixed(1);\n  it.seed_count = Math.floor(Math.random() * 40);\n  it.temp_c = (25 + Math.random() * 10).toFixed(1);\n}\n\n// === HTML table ===\nfunction htmlRows(items) {\n  return items.map(it =>\n    \"<tr>\" +\n    \"<td>\" + it.tray + \"</td>\" +\n    \"<td>\" + it.area_px + \"</td>\" +\n    \"<td>\" + it.greeness + \"</td>\" +\n    \"<td>\" + it.humidity + \"</td>\" +\n    \"<td>\" + it.seed_count + \"</td>\" +\n    \"<td>\" + it.temp_c + \"°C</td>\" +\n    \"<td>\" + it.time + \"</td>\" +\n    \"<td><a href=\\\"\" + it.url + \"\\\" target=\\\"_blank\\\">เปิดรูป</a></td>\" +\n    \"</tr>\"\n  ).join(\"\");\n}\n\nlet htmlString = \"\";\nhtmlString += \"<div style=\\\"font:14px/1.6 -apple-system,Segoe UI,Roboto,Arial\\\">\";\nhtmlString += \"<h2>🌱 Seed Monitor · รายงานล่าสุด 8 ถาด</h2>\";\nhtmlString += \"<div>\" + now.toLocaleString() + \"</div>\";\nif (items.length) {\n  htmlString += \"<table cellspacing=\\\"0\\\" cellpadding=\\\"6\\\" border=\\\"1\\\" style=\\\"border-collapse:collapse;border:1px solid #ddd\\\">\";\n  htmlString += \"<thead><tr><th>Tray</th><th>Area(px)</th><th>Greeness</th><th>Humidity</th><th>Seed Count</th><th>Temp</th><th>เวลา</th><th>ลิงก์</th></tr></thead>\";\n  htmlString += \"<tbody>\" + htmlRows(items) + \"</tbody>\";\n  htmlString += \"</table>\";\n} else {\n  htmlString += \"<p>วันนี้ยังไม่มีข้อมูล</p>\";\n}\nhtmlString += \"</div>\";\n\n// === Output ===\nconst mailOut = {\n  to: email,\n  topic: \"🌱 Seed Monitor · รายงานล่าสุด 8 ถาด\",\n  payload: htmlString,\n  payloadType: \"html\"  // สำคัญ!\n};\nconst httpOut = httpOK(msg, { ok: true, count: items.length, to: email, items });\n\nnode.status({ fill: \"green\", shape: \"dot\", text: \"mail→ \" + email + \" (\" + items.length + \")\" });\nreturn [mailOut, httpOut];\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 1300,
+        "wires": [
+            [
+                "64848d0cc1af0143"
+            ],
+            [
+                "4955d4cc0fb04f59"
+            ]
+        ]
+    },
+    {
+        "id": "4955d4cc0fb04f59",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP Response (JSON + CORS)",
+        "statusCode": "",
+        "headers": {},
+        "x": 960,
+        "y": 1340,
+        "wires": []
+    },
+    {
+        "id": "8ea94f0e359e04ec",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "OPTIONS /api/report/latest8",
+        "url": "/api/report/latest8",
+        "method": "options",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 180,
+        "y": 1380,
+        "wires": [
+            [
+                "c9e5f57ffe33b65a"
+            ]
+        ]
+    },
+    {
+        "id": "c9e5f57ffe33b65a",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "CORS preflight 204",
+        "func": "msg.headers={\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"POST, OPTIONS\",\"Access-Control-Allow-Headers\":\"Content-Type\"}; msg.statusCode=204; msg.payload=\"\"; return msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 430,
+        "y": 1380,
+        "wires": [
+            [
+                "4955d4cc0fb04f59"
+            ]
+        ]
+    },
+    {
+        "id": "ef6d6cc383f01975",
+        "type": "catch",
+        "z": "59b190cff3041764",
+        "name": "Catch SMTP errors",
+        "scope": [
+            "emailnode"
+        ],
+        "uncaught": false,
+        "x": 210,
+        "y": 1440,
+        "wires": [
+            [
+                "55eecadf863edea2"
+            ]
+        ]
+    },
+    {
+        "id": "55eecadf863edea2",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "SMTP error/detail",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "x": 430,
+        "y": 1440,
+        "wires": []
+    },
+    {
+        "id": "64848d0cc1af0143",
+        "type": "e-mail",
+        "z": "59b190cff3041764",
+        "server": "smtp.gmail.com",
+        "port": "465",
+        "authtype": "BASIC",
+        "saslformat": true,
+        "token": "oauth2Response.access_token",
+        "secure": true,
+        "tls": true,
+        "name": "",
+        "dname": "",
+        "x": 870,
+        "y": 1280,
+        "wires": []
+    },
+    {
+        "id": "1496e4d90cd69e53",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "function 7",
+        "func": "// ดึงค่าที่คำนวณจาก analyze\nconst d = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\n\n// 1) พยายามใช้ tray จาก Compose Influx Point (ใส่ไว้ใน msg.tags)\nlet tray = (msg.tags && msg.tags.tray_id) || d.tray || null;\n\n// 2) ถ้าไม่มี ให้ดึงจากชื่อไฟล์ที่ Rename by Tray ตั้งให้ เช่น\n// PLANT-01_T-03_C-A1_1758559602.jpg  => TRAY-03\nif (!tray) {\n    const src = ((msg.filepath || '') + ' ' + (msg.public_url || '')).toString();\n    const m = src.match(/_T-(\\d{2})_/);\n    if (m) tray = 'TRAY-' + m[1];\n}\n\n// 3) กันเคสว่าง\ntray = tray || 'TRAY-XX';\n\n// 4) ทำความสะอาดและบังคับชนิดตัวเลขก่อนใส่ SQL\nconst q = (n, def = 0) => {\n    const v = Number(n);\n    return Number.isFinite(v) ? v : def;\n};\n\nconst traySafe = tray.replace(/'/g, \"''\");\n\n// ⚠ คอลัมน์ในตารางของคุณสะกด greeness (n เดียว)\nmsg.topic = `\nINSERT INTO tray_data (tray, area_px, greeness, seed_count, temp_c, humidity, ts)\nVALUES ('${traySafe}', ${q(d.area_px)}, ${q(d.greenness)}, ${q(d.seed_count)}, ${q(d.temp_c)}, ${q(d.humidity)}, NOW())\n`;\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2520,
+        "y": 300,
+        "wires": [
+            [
+                "cf412d88c4373c54",
+                "c4fc06e0a57f2119"
+            ]
+        ]
+    },
+    {
+        "id": "cf412d88c4373c54",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "debug 14",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2600,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "a14ba5afa42cfed1",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "function 8",
+        "func": "let d = msg.payload;  // { tray, area_px, greenness, seed_count, temp_c, humidity }\n\nconst tray = (d.tray || 'TRAY-XX').replace(/'/g,\"''\");  // กัน ' ในชื่อถาด\n\n// !! ใช้ชื่อคอลัมน์ให้ตรงตาราง: greeness (n เดียว)\nmsg.topic = `\nINSERT INTO tray_data (tray, area_px, greeness, seed_count, temp_c, humidity, ts)\nVALUES ('${tray}', ${d.area_px}, ${d.greenness}, ${d.seed_count}, ${d.temp_c}, ${d.humidity}, NOW())\n`;\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2360,
+        "y": 560,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "40ff14acb26c7566",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "function 9",
+        "func": "// Expose tray_id into payload for downstream nodes\nconst p = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\np.tray = (msg.tags && msg.tags.tray_id)\n    || (msg.meta && (msg.meta.tray_id || msg.meta.tray))\n    || 'TRAY-XX';\nmsg.payload = p;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2380,
+        "y": 380,
+        "wires": [
+            [
+                "1496e4d90cd69e53"
+            ]
+        ]
+    },
+    {
+        "id": "c4fc06e0a57f2119",
+        "type": "mysql",
+        "z": "59b190cff3041764",
+        "mydb": "c2c5f91a3b8b0108",
+        "name": "",
+        "x": 2750,
+        "y": 220,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "4b7280d7ce4a7f50",
+        "type": "http in",
+        "z": "59b190cff3041764",
+        "name": "GET /api/tray-latest",
+        "url": "/api/tray-latest",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 1600,
+        "wires": [
+            [
+                "646aa83ba4397bf3"
+            ]
+        ]
+    },
+    {
+        "id": "646aa83ba4397bf3",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Build SELECT (limit)",
+        "func": "// อ่าน limit จาก query, ค่าเริ่มต้น 8\nconst q = (msg.req && msg.req.query) ? msg.req.query : {};\nconst lim = Math.max(1, Math.min(50, Number(q.limit || 8)));\nmsg.topic = `\n  SELECT tray, area_px, greeness, seed_count, temp_c, humidity, ts\n  FROM tray_data\n  WHERE (tray, ts) IN (\n    SELECT t.tray, MAX(t.ts) AS ts\n    FROM tray_data t\n    GROUP BY t.tray\n  )\n  ORDER BY ts DESC\n  LIMIT ${lim}\n`;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 1600,
+        "wires": [
+            [
+                "bafdca07071ee46c"
+            ]
+        ]
+    },
+    {
+        "id": "bafdca07071ee46c",
+        "type": "mysql",
+        "z": "59b190cff3041764",
+        "mydb": "c2c5f91a3b8b0108",
+        "name": "MySQL (projectplant)",
+        "x": 660,
+        "y": 1600,
+        "wires": [
+            [
+                "aeec5d2b4a731a5b",
+                "e0a26467f17a08da"
+            ]
+        ]
+    },
+    {
+        "id": "aeec5d2b4a731a5b",
+        "type": "function",
+        "z": "59b190cff3041764",
+        "name": "Map → JSON + CORS",
+        "func": "const rows = Array.isArray(msg.payload) ? msg.payload : [];\n// แปลงรูปแบบให้อ่านง่ายฝั่งเว็บ\nconst items = rows.map(r => ({\n  tray: r.tray,\n  area_px: Number(r.area_px)||0,\n  greenness: Number(r.greeness)||0,   // คอลัมน์ในตารางสะกด greeness\n  seed_count: Number(r.seed_count)||0,\n  temp_c: Number(r.temp_c)||0,\n  humidity: Number(r.humidity)||0,\n  ts: r.ts\n}));\nmsg.headers = {\n  \"Content-Type\": \"application/json; charset=utf-8\",\n  \"Access-Control-Allow-Origin\": \"*\",\n  \"Cache-Control\": \"no-store, no-cache, must-revalidate, max-age=0\"\n};\nmsg.payload = { items };\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 900,
+        "y": 1600,
+        "wires": [
+            [
+                "36d20eb326cbe906"
+            ]
+        ]
+    },
+    {
+        "id": "36d20eb326cbe906",
+        "type": "http response",
+        "z": "59b190cff3041764",
+        "name": "HTTP 200 JSON",
+        "statusCode": "",
+        "headers": {},
+        "x": 1140,
+        "y": 1600,
+        "wires": []
+    },
+    {
+        "id": "e0a26467f17a08da",
+        "type": "debug",
+        "z": "59b190cff3041764",
+        "name": "DB rows",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 870,
+        "y": 1640,
+        "wires": []
+    },
+    {
+        "id": "influx_cfg",
+        "type": "influxdb",
+        "hostname": "http://172.20.10.4:8086",
+        "port": "8086",
+        "protocol": "http",
+        "database": "",
+        "name": "Influx v2",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "http://172.20.10.4:8086",
+        "timeout": "",
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "4f6e7d8c9b0a1b2c",
+        "type": "telegram bot",
+        "botname": "Surnbot",
+        "usernames": "",
+        "chatids": "1520038645",
+        "baseapiurl": "",
+        "testenvironment": false,
+        "updatemode": "polling",
+        "pollinterval": "300",
+        "usesocks": false,
+        "sockshost": "",
+        "socksport": "6667",
+        "socksusername": "anonymous",
+        "sockspassword": "",
+        "bothost": "",
+        "botpath": "",
+        "localbothost": "",
+        "localbotport": "8443",
+        "publicbotport": "8443",
+        "privatekey": "",
+        "certificate": "",
+        "useselfsignedcertificate": false,
+        "sslterminated": false,
+        "verboselogging": false
+    },
+    {
+        "id": "port-com6",
+        "type": "serial-port",
+        "name": "",
+        "serialport": "COM6",
+        "serialbaud": "115200",
+        "databits": "8",
+        "parity": "none",
+        "stopbits": "1",
+        "waitfor": "",
+        "newline": "\\n",
+        "bin": "false",
+        "out": "char",
+        "addchar": "",
+        "responsetimeout": "10000"
+    },
+    {
+        "id": "c2c5f91a3b8b0108",
+        "type": "MySQLdatabase",
+        "name": "projectplant",
+        "host": "127.0.0.1",
+        "port": "3306",
+        "db": "projectplant",
+        "tz": "",
+        "charset": "UTF8"
+    },
+    {
+        "id": "1e864ccc1eef1b26",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0",
+            "node-red-contrib-telegrambot": "16.3.2",
+            "node-red-node-serialport": "2.0.3",
+            "node-red-node-email": "3.1.0",
+            "node-red-node-mysql": "2.0.0"
+        }
+    }
+]
